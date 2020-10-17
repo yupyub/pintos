@@ -219,7 +219,7 @@ load (const char *file_name, void (**eip) (void), void **esp)
         goto done;
     process_activate ();
 
-    ////
+    //// // Toknize file_name
     char *token, *save_ptr;
     char argv[10][128];
     int argc = 0;
@@ -309,12 +309,37 @@ load (const char *file_name, void (**eip) (void), void **esp)
                     goto done;
                 break;
         }
-    }
+    }   
 
     /* Set up stack. */
     if (!setup_stack (esp))
         goto done;
-
+    //// // Fill stack
+    int* addr[100];
+    for(int i = argc-1;i>=0;i--){
+        addr[i] = (*esp) - (strlen(argv[i])+1);
+        *esp = addr[i];
+        strlcpy(*esp,argv[i],strlen(argv[i])+1);
+    }
+    while(((int)(*esp))%4!=0){
+        (*(char**)esp)--;
+        (**(uint8_t**)esp) = (uint8_t)0;
+    }
+    (*esp)-=4;
+    (**(int**)esp) = 0;
+    for(int i = argc-1;i>=0;i--){
+        *esp-=4;
+        (**(int**)esp) = (int)addr[i];
+    }
+    (*esp)-=4;
+    (**(int**)esp) = (int)(*esp)+4;
+    (*esp)-=4;
+    (**(int**)esp) = argc;
+    (*esp)-=4;
+    (**(int**)esp) = 0;
+    printf("2:: %X\n",(*esp));
+    hex_dump(*esp,(char*)0xc0000000,0xc0000000-(int)(*esp),true);
+    ////
     /* Start address. */
     *eip = (void (*) (void)) ehdr.e_entry;
 
