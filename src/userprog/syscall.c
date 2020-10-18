@@ -26,6 +26,7 @@ syscall_init (void)
     intr_register_int (0x30, 3, INTR_ON, syscall_handler, "syscall");
 }
 void check_user_vaddr(const void* vaddr){
+    //vaddr -= 1; // 주소처리?
     if(!is_user_vaddr(vaddr))
         exit(-1);
 }
