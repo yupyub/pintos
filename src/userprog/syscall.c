@@ -41,13 +41,16 @@ syscall_handler (struct intr_frame *f UNUSED)
     //printf("call num : %d\n",*(uint32_t*)(f->esp));
     switch(*(int*)(f->esp)){
         case SYS_HALT:
+            //halt();
             break;
         case SYS_EXIT:
             exit(*(int*)(f->esp+4));
             break;
         case SYS_EXEC:
+            //exic((const char*)*(uint32_t*)(f->esp+4));
             break;
         case SYS_WAIT:
+            wait((tid_t)*(uint32_t*)(f->esp+4));
             break;
         case SYS_CREATE:
             break;
@@ -75,6 +78,7 @@ void halt(){
     shutdown_power_off();
 }
 void exit(int status){
+    //thread_current ()->exit_status = status;
     printf("%s: exit(%d)\n",thread_name(),status);
     thread_exit();
 }
@@ -92,7 +96,7 @@ int filesize(int fd){
 }
 int read(int fd, void *buffer, unsigned size){
     int i;
-    if(fd == 0){
+    if(fd == STDIN_FILENO){
         for(i = 0;i<size;i++){
             if(((char*)buffer)[i] == '\0')
                 break;
@@ -102,7 +106,7 @@ int read(int fd, void *buffer, unsigned size){
 
 }
 int write(int fd, const void *buffer, unsigned size){
-    if(fd == 1){
+    if(fd == STDOUT_FILENO){
         putbuf(buffer,size);
         return size;
     }

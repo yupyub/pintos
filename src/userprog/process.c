@@ -17,6 +17,7 @@
 #include "threads/palloc.h"
 #include "threads/thread.h"
 #include "threads/vaddr.h"
+#include "threads/malloc.h"
 
 static thread_func start_process NO_RETURN;
 static bool load (const char *cmdline, void (**eip) (void), void **esp);
@@ -37,8 +38,16 @@ process_execute (const char *file_name)
     if (fn_copy == NULL)
         return TID_ERROR;
     strlcpy (fn_copy, file_name, PGSIZE);
+    // // parsing file_name
+    char prog_name[128];
+    int i = 0;
+    strlcpy(prog_name,(char*)file_name,strlen(file_name)+1);
+    for(i = 0;prog_name[i] != '\0'&&prog_name[i] != ' ';i++);
+    prog_name[i] = '\0';
+
+    //
     /* Create a new thread to execute FILE_NAME. */
-    tid = thread_create (file_name, PRI_DEFAULT, start_process, fn_copy);
+    tid = thread_create (prog_name, PRI_DEFAULT, start_process, fn_copy);
     if (tid == TID_ERROR)
         palloc_free_page (fn_copy); 
     return tid;
@@ -86,8 +95,19 @@ start_process (void *file_name_)
     int
 process_wait (tid_t child_tid UNUSED) 
 {
-    for(int i = 0;i<1000000000;i++);
+    for(int i = 0;i<500000000;i++);
     //while(1);
+    /*
+    struct thread* child;
+    int exit_status;
+    if(!(child=thread_get_child(child_tid)))
+        return -1;
+    sema_down(&(child->wait_sema));
+    list_remove(&(child->child_elem));
+    exit_status = child->exit_status;
+    sema_up(&(child->destroy_sema));
+    return exit_status;
+    */
     return -1;
 }
 
@@ -222,12 +242,20 @@ load (const char *file_name, void (**eip) (void), void **esp)
 
     //// // Toknize file_name
     char *token, *save_ptr;
-    char argv[10][128];
+    char** argv;
     int argc = 0;
+    int len_sum = 0;
+    int len;
+    int idx = 0;
     for(token = strtok_r((char*)file_name," ",&save_ptr);token != NULL; token = strtok_r(NULL," ",&save_ptr)){
-        strlcpy(argv[argc++],token,strlen(token)+1);
+        argc+=1;
     }
-    
+    argv = (char**)malloc(sizeof(char*)*argc);
+    for(int i = 0;i<argc;i++){
+        len = strlen(file_name+idx)+1;
+        argv[i] = (char*)(file_name+idx);
+        idx += len;
+    }
     ////
 
     /* Open executable file. */
@@ -314,22 +342,19 @@ load (const char *file_name, void (**eip) (void), void **esp)
     if (!setup_stack (esp))
         goto done;
     //// // Fill stack
-    int len_sum = 0;
-    int len;
-    uint32_t addr[10];
     for(int i = argc-1;i>=0;i--){
         len = strlen(argv[i])+1;
         *esp -= len;
         len_sum += len;
         strlcpy(*esp,argv[i],len);
-        addr[i] = (uint32_t)(*esp);
+        argv[i] = *esp;
     }
     *esp -= len_sum%4 != 0 ? 4 - (len_sum%4) : 0;
     *esp -= 4;
     **(uint32_t**)esp = 0;
     for(int i = argc - 1;i>=0;i--){
         *esp -= 4;
-        **(uint32_t**)esp = (uint32_t)addr[i];
+        **(uint32_t**)esp = (uint32_t)argv[i];
     }
     *esp -= 4;
     **(uint32_t**)esp = (uint32_t)(*esp)+4;
@@ -346,6 +371,7 @@ load (const char *file_name, void (**eip) (void), void **esp)
 
 done:
     /* We arrive here whether the load is successful or not. */
+    free(argv);
     file_close (file);
     return success;
 }
