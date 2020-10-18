@@ -3,6 +3,8 @@
 #include <syscall-nr.h>
 #include "threads/interrupt.h"
 #include "threads/thread.h"
+#include "threads/vaddr.h"
+void check_user_vaddr(const void* vaddr);
 static void syscall_handler (struct intr_frame *);
 void halt();
 void exit(int status);
@@ -23,33 +25,32 @@ syscall_init (void)
 {
     intr_register_int (0x30, 3, INTR_ON, syscall_handler, "syscall");
 }
-/*
-static inline void
-get_parameter(int32_t *esp,int32_t *Argv,int Argc,void *esp2){
-    ASSERT(1<=Argc && Argc<=4);
-    while(Argc--){
-        check_address_4(++esp,esp2);
-        *(args++) = *esp;
-    }
+void check_user_vaddr(const void* vaddr){
+    if(!is_user_vaddr(vaddr))
+        exit(-1);
 }
-*/
 static void
 syscall_handler (struct intr_frame *f UNUSED) 
 {
     //printf ("system call!\n");
     //hex_dump((uintptr_t)(f->esp),f->esp,100,1);
     //printf("call num : %d\n",*(uint32_t*)(f->esp));
+    int32_t para[4];
+    check_user_vaddr(f->esp);
     switch(*(int*)(f->esp)){
         case SYS_HALT:
             //halt();
             break;
         case SYS_EXIT:
+            check_user_vaddr(f->esp+4);
             exit(*(int*)(f->esp+4));
             break;
         case SYS_EXEC:
-            //exic((const char*)*(uint32_t*)(f->esp+4));
+            check_user_vaddr(f->esp+4);
+            exec((const char*)*(uint32_t*)(f->esp+4));
             break;
         case SYS_WAIT:
+            check_user_vaddr(f->esp+4);
             wait((tid_t)*(uint32_t*)(f->esp+4));
             break;
         case SYS_CREATE:
@@ -63,6 +64,9 @@ syscall_handler (struct intr_frame *f UNUSED)
         case SYS_READ:
             break;
         case SYS_WRITE:
+            check_user_vaddr(f->esp+4);
+            check_user_vaddr(f->esp+8);
+            check_user_vaddr(f->esp+12);
             f->eax = write((int)*(uint32_t*)(f->esp+4),(void*)*(uint32_t*)(f->esp+8),(unsigned)*(uint32_t*)(f->esp+12));
             break;
         case SYS_SEEK:
@@ -78,7 +82,7 @@ void halt(){
     shutdown_power_off();
 }
 void exit(int status){
-    //thread_current ()->exit_status = status;
+    thread_current ()->exit_status = status;
     printf("%s: exit(%d)\n",thread_name(),status);
     thread_exit();
 }
