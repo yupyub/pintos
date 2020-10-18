@@ -86,7 +86,8 @@ start_process (void *file_name_)
     int
 process_wait (tid_t child_tid UNUSED) 
 {
-    while(1);
+    for(int i = 0;i<1000000000;i++);
+    //while(1);
     return -1;
 }
 
@@ -221,11 +222,12 @@ load (const char *file_name, void (**eip) (void), void **esp)
 
     //// // Toknize file_name
     char *token, *save_ptr;
-    char Argv[10][128];
-    int Argc = 0;
+    char argv[10][128];
+    int argc = 0;
     for(token = strtok_r((char*)file_name," ",&save_ptr);token != NULL; token = strtok_r(NULL," ",&save_ptr)){
-        strlcpy(Argv[Argc++],token,strlen(token)+1);
+        strlcpy(argv[argc++],token,strlen(token)+1);
     }
+    
     ////
 
     /* Open executable file. */
@@ -312,36 +314,30 @@ load (const char *file_name, void (**eip) (void), void **esp)
     if (!setup_stack (esp))
         goto done;
     //// // Fill stack
-    int* Addr[15];
-    for(int i = Argc-1;i>=0;i--){
-        Addr[i] = (*esp) - (strlen(Argv[i])+1);
-        *esp = Addr[i];
-        strlcpy((char*)*esp,Argv[i],strlen(Argv[i])+1);
+    int len_sum = 0;
+    int len;
+    uint32_t addr[10];
+    for(int i = argc-1;i>=0;i--){
+        len = strlen(argv[i])+1;
+        *esp -= len;
+        len_sum += len;
+        strlcpy(*esp,argv[i],len);
+        addr[i] = (uint32_t)(*esp);
     }
-    while(((int)(*esp))%4!=0){
-        (*(char**)esp)--;
-        (**(uint8_t**)esp) = (uint8_t)0;
+    *esp -= len_sum%4 != 0 ? 4 - (len_sum%4) : 0;
+    *esp -= 4;
+    **(uint32_t**)esp = 0;
+    for(int i = argc - 1;i>=0;i--){
+        *esp -= 4;
+        **(uint32_t**)esp = (uint32_t)addr[i];
     }
-    (*esp)-=4;
-    (**(int**)esp) = 0;
-    for(int i = Argc-1;i>=0;i--){
-        *esp-=4;
-        (**(int**)esp) = (int)Addr[i];
-    }
-    (*esp)-=4;
-    (**(int**)esp) = (int)(*esp)+4;
-    (*esp)-=4;
-    (**(int**)esp) = Argc;
-    (*esp)-=4;
-    (**(int**)esp) = 0;
-    hex_dump((uintptr_t)*esp,*esp,(size_t)PHYS_BASE-(size_t)*esp,true);
-    /*
-    for(char* i = *esp;(unsigned int)i<0xc0000000;i++){
-        if((int)i%16 == 0)
-            printf("\n");
-        printf("%02X ",(unsigned char)*i);
-    }
-    */
+    *esp -= 4;
+    **(uint32_t**)esp = (uint32_t)(*esp)+4;
+    *esp -= 4;
+    **(uint32_t**)esp = argc;
+    *esp -= 4;
+    **(uint32_t**)esp = 0;
+    //hex_dump((uintptr_t)*esp,*esp,(size_t)PHYS_BASE-(size_t)*esp,1);
     ////
     /* Start address. */
     *eip = (void (*) (void)) ehdr.e_entry;
@@ -396,6 +392,7 @@ validate_segment (const struct Elf32_Phdr *phdr, struct file *file)
        it then user code that passed a null pointer to system calls
        could quite likely panic the kernel by way of null pointer
        assertions in memcpy(), etc. */
+    //if(phdr->p_offset<PGSIZE)
     if (phdr->p_vaddr < PGSIZE)
         return false;
 
