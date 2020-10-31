@@ -42,8 +42,10 @@ process_execute (const char *file_name)
     char prog_name[128];
     int i = 0;
     strlcpy(prog_name,(char*)file_name,strlen(file_name)+1);
+    
     for(i = 0;prog_name[i] != '\0'&&prog_name[i] != ' ';i++);
     prog_name[i] = '\0';
+    
     if(filesys_open(prog_name) == NULL)
         return -1;
     //
@@ -112,8 +114,6 @@ process_wait (tid_t child_tid UNUSED)
             return exit_status;
         }
     }
-    
-    
     return -1;
 }
 
@@ -250,20 +250,26 @@ load (const char *file_name, void (**eip) (void), void **esp)
 
     //// // Toknize file_name
     char *token, *save_ptr;
-    char** argv;
+    char** argv = NULL;
     int argc = 0;
     int len_sum = 0;
     int len;
-    int idx = 0;
-    for(token = strtok_r((char*)file_name," ",&save_ptr);token != NULL; token = strtok_r(NULL," ",&save_ptr)){
+    char tmpname[256];
+    strlcpy(tmpname,file_name,strlen(file_name)+1);
+    for(token = strtok_r(tmpname," \n\t",&save_ptr);token != NULL; token = strtok_r(NULL," ",&save_ptr)){
         argc+=1;
     }
     argv = (char**)malloc(sizeof(char*)*argc);
+    for(i = 0,token = strtok_r(file_name," \n\t",&save_ptr);token != NULL; token = strtok_r(NULL," ",&save_ptr),i++){
+        argv[i] = token;
+    }
+    /*
     for(int i = 0;i<argc;i++){
         len = strlen(file_name+idx)+1;
         argv[i] = (char*)(file_name+idx);
         idx += len;
     }
+    */
     ////
 
     /* Open executable file. */
@@ -379,7 +385,8 @@ load (const char *file_name, void (**eip) (void), void **esp)
 
 done:
     /* We arrive here whether the load is successful or not. */
-    free(argv);
+    if(argv != NULL)
+        free(argv);
     file_close (file);
     return success;
 }

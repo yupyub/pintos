@@ -4,9 +4,10 @@
 #include "threads/interrupt.h"
 #include "threads/thread.h"
 #include "threads/vaddr.h"
+#include "userprog/process.h"
 void check_user_vaddr(const void* vaddr);
 static void syscall_handler (struct intr_frame *);
-void halt();
+void halt(void);
 void exit(int status);
 tid_t exec(const char* cmd_line);
 int wait(tid_t pid);
@@ -36,11 +37,10 @@ syscall_handler (struct intr_frame *f UNUSED)
     //printf ("system call!\n");
     //hex_dump((uintptr_t)(f->esp),f->esp,100,1);
     //printf("call num : %d\n",*(uint32_t*)(f->esp));
-    int32_t para[4];
     check_user_vaddr(f->esp);
     switch(*(int*)(f->esp)){
         case SYS_HALT:
-            //halt();
+            halt();
             break;
         case SYS_EXIT:
             check_user_vaddr(f->esp+4);
@@ -48,11 +48,11 @@ syscall_handler (struct intr_frame *f UNUSED)
             break;
         case SYS_EXEC:
             check_user_vaddr(f->esp+4);
-            exec((const char*)*(uint32_t*)(f->esp+4));
+            f->eax = exec((const char*)*(uint32_t*)(f->esp+4));
             break;
         case SYS_WAIT:
             check_user_vaddr(f->esp+4);
-            wait((tid_t)*(uint32_t*)(f->esp+4));
+            f->eax = wait((tid_t)*(uint32_t*)(f->esp+4));
             break;
         case SYS_CREATE:
             break;
@@ -79,7 +79,7 @@ syscall_handler (struct intr_frame *f UNUSED)
     }
     //thread_exit ();
 }
-void halt(){
+void halt(void){
     shutdown_power_off();
 }
 void exit(int status){
@@ -93,22 +93,23 @@ tid_t exec(const char* cmd_line){
 int wait(tid_t tid){
     return process_wait(tid);
 }
+/*
 bool create(const char *file, unsigned initial_size){
 }
 bool remove(const char *file){
 }
 int filesize(int fd){
 }
+*/
 int read(int fd, void *buffer, unsigned size){
-    int i;
+    int i = 0;
     if(fd == STDIN_FILENO){
-        for(i = 0;i<size;i++){
+        for(i = 0;i<(int)size;i++){
             if(((char*)buffer)[i] == '\0')
                 break;
         }
     }
     return i;
-
 }
 int write(int fd, const void *buffer, unsigned size){
     if(fd == STDOUT_FILENO){
@@ -117,9 +118,11 @@ int write(int fd, const void *buffer, unsigned size){
     }
     return -1;
 }
+/*
 void seek(int fd, unsigned position){
 }
 unsigned tell(int fd){
 }
 void close(int fd){
 }
+*/
