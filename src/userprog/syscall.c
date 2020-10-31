@@ -19,6 +19,8 @@ int write(int fd, const void *buffer, unsigned size);
 void seek(int fd, unsigned position);
 unsigned tell(int fd);
 void close(int fd);
+int fibonacci(int n);
+int max_of_four_int(int a,int b,int c,int d);
 
 
 void
@@ -27,7 +29,6 @@ syscall_init (void)
     intr_register_int (0x30, 3, INTR_ON, syscall_handler, "syscall");
 }
 void check_user_vaddr(const void* vaddr){
-    //vaddr -= 1; // 주소처리?
     if(!is_user_vaddr(vaddr))
         exit(-1);
 }
@@ -39,6 +40,17 @@ syscall_handler (struct intr_frame *f UNUSED)
     //printf("call num : %d\n",*(uint32_t*)(f->esp));
     check_user_vaddr(f->esp);
     switch(*(int*)(f->esp)){
+        case SYS_FIBONACCI:
+            check_user_vaddr(f->esp+4);
+            f->eax=fibonacci(*(int*)(f->esp+4));
+            break;
+        case SYS_MAX_OF_FOUR_INTEGERS:
+            check_user_vaddr(f->esp+4);
+            check_user_vaddr(f->esp+8);
+            check_user_vaddr(f->esp+12);
+            check_user_vaddr(f->esp+16);
+            f->eax=max_of_four_int(*(int*)(f->esp+4),*(int*)(f->esp+8),*(int*)(f->esp+12),*(int*)(f->esp+16));
+            break;
         case SYS_HALT:
             halt();
             break;
@@ -63,6 +75,10 @@ syscall_handler (struct intr_frame *f UNUSED)
         case SYS_FILESIZE:
             break;
         case SYS_READ:
+            check_user_vaddr(f->esp+4);
+            check_user_vaddr(f->esp+8);
+            check_user_vaddr(f->esp+12);
+            f->eax = read((int)*(uint32_t*)(f->esp+4),(void*)*(uint32_t*)(f->esp+8),(unsigned)*(uint32_t*)(f->esp+12));
             break;
         case SYS_WRITE:
             check_user_vaddr(f->esp+4);
@@ -78,6 +94,25 @@ syscall_handler (struct intr_frame *f UNUSED)
             break;
     }
     //thread_exit ();
+}
+int fibonacci(int n){
+    int f0 = 0, f1 = 1, f2;
+    for(int i=0;i<n;i++){
+        f2=f0+f1;
+        f0=f1;
+        f1=f2;
+   }
+   return f0;
+}
+int max_of_four_int(int a,int b,int c,int d){
+    int maxi = a;
+    if(maxi < b)
+        maxi = b;
+    if(maxi < c)
+        maxi = c;
+    if(maxi < d)
+        maxi = d;
+    return maxi;
 }
 void halt(void){
     shutdown_power_off();
