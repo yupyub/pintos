@@ -263,13 +263,6 @@ load (const char *file_name, void (**eip) (void), void **esp)
     for(i = 0,token = strtok_r(file_name," \n\t",&save_ptr);token != NULL; token = strtok_r(NULL," ",&save_ptr),i++){
         argv[i] = token;
     }
-    /*
-    for(int i = 0;i<argc;i++){
-        len = strlen(file_name+idx)+1;
-        argv[i] = (char*)(file_name+idx);
-        idx += len;
-    }
-    */
     ////
 
     /* Open executable file. */
