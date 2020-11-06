@@ -173,7 +173,8 @@ int read(int fd, void *buffer, unsigned size){
     else if(fd>2){
         if(thread_current()->fd[fd] == NULL){
             lock_release(&file_lock);
-            exit(-1);
+            //exit(-1);
+            return -1;
         }
         i = file_read(thread_current()->fd[fd],buffer,size);
     }
@@ -192,7 +193,8 @@ int write(int fd, const void *buffer, unsigned size){
     else if(fd>2){
         if(thread_current()->fd[fd] == NULL){
             lock_release(&file_lock);
-            exit(-1);
+            //exit(-1);
+            return 0;
         }
         if((thread_current()->fd[fd])->deny_write)
             file_deny_write(thread_current()->fd[fd]);
@@ -219,10 +221,10 @@ int open(const char* file){
         exit(-1);
     int ret = -1;
     check_user_vaddr(file);
-    //lock_acquire(&file_lock);
+    lock_acquire(&file_lock);
     struct file* fp = filesys_open(file);
     if(fp == NULL){
-        //lock_release(&file_lock);
+        lock_release(&file_lock);
         return ret;
     }
     for(int i = 3;i<128;i++){
@@ -235,7 +237,7 @@ int open(const char* file){
             break;
         }
     }
-    //lock_release(&file_lock);
+    lock_release(&file_lock);
     return ret;
 }
 int filesize(int fd){

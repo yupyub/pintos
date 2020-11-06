@@ -105,6 +105,8 @@ struct thread
     struct file* fd[128];
     ////
     int bad_end;
+    struct semaphore load_lock;
+    struct thread* parent;
     ////
 #endif
 

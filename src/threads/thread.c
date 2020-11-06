@@ -476,6 +476,8 @@ init_thread (struct thread *t, const char *name, int priority)
       t->fd[i] = NULL;
   ////
   t->bad_end = 0;
+  sema_init(&(t->load_lock),0);
+  t->parent = running_thread();
   ////
 #endif
 }
