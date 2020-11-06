@@ -53,6 +53,15 @@ process_execute (const char *file_name)
     tid = thread_create (prog_name, PRI_DEFAULT, start_process, fn_copy);
     if (tid == TID_ERROR)
         palloc_free_page (fn_copy); 
+    struct list_elem* e;
+    struct thread* t;
+    for(e = list_begin(&thread_current()->child);e!=list_end(&thread_current()->child);e = list_next(e)){
+        t = list_entry(e,struct thread, child_elem);
+        //if(t->exit_status == -1){
+        if(t->bad_end){
+            return process_wait(tid);
+        }
+    }
     return tid;
 }
 
@@ -73,8 +82,13 @@ start_process (void *file_name_)
 
     /* If load failed, quit. */
     palloc_free_page (file_name);
-    if (!success) 
+    if (!success){ 
+        ////
+        thread_current()->bad_end = 1;
+        ////
         thread_exit ();
+
+    }
 
     /* Start the user process by simulating a return from an
        interrupt, implemented by intr_exit (in

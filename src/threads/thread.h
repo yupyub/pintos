@@ -103,6 +103,9 @@ struct thread
     struct list_elem child_elem;
     int exit_status;
     struct file* fd[128];
+    ////
+    int bad_end;
+    ////
 #endif
 
     /* Owned by thread.c. */

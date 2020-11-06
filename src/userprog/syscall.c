@@ -29,11 +29,12 @@ void close(int fd);
 int fibonacci(int n);
 int max_of_four_int(int a,int b,int c,int d);
 
-
+struct lock file_lock;
 void
 syscall_init (void) 
 {
     intr_register_int (0x30, 3, INTR_ON, syscall_handler, "syscall");
+    lock_init(&file_lock);
 }
 void check_user_vaddr(const void* vaddr){
     if(!is_user_vaddr(vaddr))
@@ -115,6 +116,8 @@ syscall_handler (struct intr_frame *f UNUSED)
             check_user_vaddr(f->esp+4);
             close((int)*(uint32_t*)(f->esp+4));
             break;
+        default:
+            exit(-1); // syscall number is invalid
     }
     //thread_exit ();
 }
@@ -159,6 +162,8 @@ int wait(tid_t tid){
 }
 int read(int fd, void *buffer, unsigned size){
     int i = 0;
+    check_user_vaddr(buffer); //// ????
+    lock_acquire(&file_lock);
     if(fd == STDIN_FILENO){
         for(i = 0;i<(int)size;i++){
             if(((char*)buffer)[i] == '\0')
@@ -166,25 +171,35 @@ int read(int fd, void *buffer, unsigned size){
         }
     }
     else if(fd>2){
-        if(thread_current()->fd[fd] == NULL)
+        if(thread_current()->fd[fd] == NULL){
+            lock_release(&file_lock);
             exit(-1);
-        return file_read(thread_current()->fd[fd],buffer,size);
+        }
+        i = file_read(thread_current()->fd[fd],buffer,size);
     }
+    lock_release(&file_lock);
     return i;
 }
 int write(int fd, const void *buffer, unsigned size){
+    int ret = -1;
+    check_user_vaddr(buffer);
+    lock_acquire(&file_lock);
+
     if(fd == STDOUT_FILENO){
         putbuf(buffer,size);
-        return size;
+        ret = size;
     }
     else if(fd>2){
-        if(thread_current()->fd[fd] == NULL)
+        if(thread_current()->fd[fd] == NULL){
+            lock_release(&file_lock);
             exit(-1);
+        }
         if((thread_current()->fd[fd])->deny_write)
             file_deny_write(thread_current()->fd[fd]);
-        return file_write(thread_current()->fd[fd],buffer,size);
+        ret = file_write(thread_current()->fd[fd],buffer,size);
     }
-    return -1;
+    lock_release(&file_lock);
+    return ret;
 }
 
 bool create(const char *file, unsigned initial_size){
@@ -202,20 +217,26 @@ bool remove(const char *file){
 int open(const char* file){
     if(file == NULL)
         exit(-1);
-    //check_user_vaddr(file);
+    int ret = -1;
+    check_user_vaddr(file);
+    //lock_acquire(&file_lock);
     struct file* fp = filesys_open(file);
-    if(fp == NULL)
-        return -1;
+    if(fp == NULL){
+        //lock_release(&file_lock);
+        return ret;
+    }
     for(int i = 3;i<128;i++){
         if(thread_current()->fd[i] == NULL){
             if(strcmp(thread_current()->name,file) == 0)
                 file_deny_write(fp);
-            else
-                thread_current()->fd[i] = fp;
-            return i;
+            thread_current()->fd[i] = fp;
+            //return i;
+            ret = i;
+            break;
         }
     }
-    return -1;
+    //lock_release(&file_lock);
+    return ret;
 }
 int filesize(int fd){
     if(thread_current()->fd[fd] == NULL)
@@ -225,13 +246,11 @@ int filesize(int fd){
 void seek(int fd, unsigned position){
     if(thread_current()->fd[fd] == NULL)
         exit(-1);
-    //check_user_vaddr(file);
     file_seek(thread_current()->fd[fd],position);
 }
 unsigned tell(int fd){
     if(thread_current()->fd[fd] == NULL)
         exit(-1);
-    //check_user_vaddr(file);
     return file_tell(thread_current()->fd[fd]);
 }
 void close(int fd){
