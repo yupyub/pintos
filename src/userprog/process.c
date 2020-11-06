@@ -51,9 +51,7 @@ process_execute (const char *file_name)
     //
     /* Create a new thread to execute FILE_NAME. */
     tid = thread_create (prog_name, PRI_DEFAULT, start_process, fn_copy);
-    ////
     sema_down(&thread_current()->load_lock);
-    ////
     if (tid == TID_ERROR)
         palloc_free_page (fn_copy); 
     struct list_elem* e;
@@ -82,16 +80,15 @@ start_process (void *file_name_)
     if_.cs = SEL_UCSEG;
     if_.eflags = FLAG_IF | FLAG_MBS;
     success = load (file_name, &if_.eip, &if_.esp);
+    if(!success)
+        thread_current()->bad_end = 1;
 
     /* If load failed, quit. */
     palloc_free_page (file_name);
     sema_up(&thread_current()->parent->load_lock);
     if (!success){ 
-        ////
-        thread_current()->bad_end = 1;
-        ////
-        thread_exit ();
-
+        //thread_exit (); //// ????
+        exit(-1);
     }
 
     /* Start the user process by simulating a return from an

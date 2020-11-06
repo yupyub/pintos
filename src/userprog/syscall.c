@@ -144,7 +144,7 @@ void halt(void){
     shutdown_power_off();
 }
 void exit(int status){
-    thread_current ()->exit_status = status;
+    thread_current()->exit_status = status;
     printf("%s: exit(%d)\n",thread_name(),status);
     ////
     for(int i = 3;i<128;i++){
@@ -173,8 +173,8 @@ int read(int fd, void *buffer, unsigned size){
     else if(fd>2){
         if(thread_current()->fd[fd] == NULL){
             lock_release(&file_lock);
-            //exit(-1);
-            return -1;
+            exit(-1);
+            //return -1;
         }
         i = file_read(thread_current()->fd[fd],buffer,size);
     }
@@ -193,8 +193,8 @@ int write(int fd, const void *buffer, unsigned size){
     else if(fd>2){
         if(thread_current()->fd[fd] == NULL){
             lock_release(&file_lock);
-            //exit(-1);
-            return 0;
+            exit(-1);
+            //return 0;
         }
         if((thread_current()->fd[fd])->deny_write)
             file_deny_write(thread_current()->fd[fd]);
