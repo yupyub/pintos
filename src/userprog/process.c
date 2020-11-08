@@ -60,7 +60,7 @@ process_execute (const char *file_name)
         t = list_entry(e,struct thread, child_elem);
         //if(t->exit_status == -1){
         if(t->bad_end){
-            return process_wait(tid);
+            tid = process_wait(t);
         }
     }
     return tid;
