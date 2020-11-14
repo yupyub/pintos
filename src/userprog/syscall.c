@@ -166,6 +166,7 @@ int read(int fd, void *buffer, unsigned size){
     lock_acquire(&file_lock);
     if(fd == STDIN_FILENO){
         for(i = 0;i<(int)size;i++){
+            ((char*) buffer)[i] = input_getc();
             if(((char*)buffer)[i] == '\0')
                 break;
         }
