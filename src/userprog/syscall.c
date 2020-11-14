@@ -208,13 +208,13 @@ int write(int fd, const void *buffer, unsigned size){
 bool create(const char *file, unsigned initial_size){
     if(file == NULL)
         exit(-1);
-    //check_user_vaddr(file);
+    check_user_vaddr(file);
     return filesys_create(file,initial_size);
 }
 bool remove(const char *file){
     if(file == NULL)
         exit(-1);
-    //check_user_vaddr(file);
+    check_user_vaddr(file);
     return filesys_remove(file);
 }
 int open(const char* file){
