@@ -58,7 +58,6 @@ static unsigned thread_ticks;   /* # of timer ticks since last yield. */
    If true, use multi-level feedback queue scheduler.
    Controlled by kernel command-line option "-o mlfqs". */
 bool thread_mlfqs;
-
 static void kernel_thread (thread_func *, void *aux);
 
 static void idle (void *aux UNUSED);
@@ -70,6 +69,11 @@ static void *alloc_frame (struct thread *, size_t size);
 static void schedule (void);
 void thread_schedule_tail (struct thread *prev);
 static tid_t allocate_tid (void);
+////
+bool compare_priority(const struct list_elem *elem1, const struct list_elem *elem2, void* aux UNUSED){
+    return list_entry(elem1,struct thread, elem)->priority > list_entry(elem2,struct thread, elem)->priority;
+}
+////
 
 /* Initializes the threading system by transforming the code
    that's currently running into a thread.  This can't work in
@@ -200,7 +204,11 @@ thread_create (const char *name, int priority,
 
   /* Add to run queue. */
   thread_unblock (t);
-
+  ////
+  if(priority > thread_get_priority()){
+      thread_yield();
+  }
+  ////
   return tid;
 }
 
@@ -237,7 +245,7 @@ thread_unblock (struct thread *t)
 
   old_level = intr_disable ();
   ASSERT (t->status == THREAD_BLOCKED);
-  list_push_back (&ready_list, &t->elem);
+  list_insert_ordered(&ready_list,&t->elem,compare_priority,NULL);
   t->status = THREAD_READY;
   intr_set_level (old_level);
 }
@@ -264,7 +272,6 @@ thread_current (void)
      recursion can cause stack overflow. */
   ASSERT (is_thread (t));
   ASSERT (t->status == THREAD_RUNNING);
-
   return t;
 }
 
@@ -308,7 +315,7 @@ thread_yield (void)
 
   old_level = intr_disable ();
   if (cur != idle_thread) 
-    list_push_back (&ready_list, &cur->elem);
+      list_insert_ordered(&ready_list, &cur->elem, compare_priority, NULL);
   cur->status = THREAD_READY;
   schedule ();
   intr_set_level (old_level);
@@ -335,7 +342,10 @@ thread_foreach (thread_action_func *func, void *aux)
 void
 thread_set_priority (int new_priority) 
 {
-  thread_current ()->priority = new_priority;
+  int tmp = thread_current()->priority;
+  thread_current()->priority = new_priority;
+  if(tmp>new_priority)
+      thread_yield(); 
 }
 
 /* Returns the current thread's priority. */
