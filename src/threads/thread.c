@@ -11,6 +11,7 @@
 #include "threads/switch.h"
 #include "threads/synch.h"
 #include "threads/vaddr.h"
+#include "devices/timer.h"
 #ifdef USERPROG
 #include "userprog/process.h"
 #endif
@@ -73,10 +74,26 @@ static tid_t allocate_tid (void);
 bool compare_priority(const struct list_elem *elem1, const struct list_elem *elem2, void* aux UNUSED){
     return list_entry(elem1,struct thread, elem)->priority > list_entry(elem2,struct thread, elem)->priority;
 }
-int int_to_FPR(int i);
-int FPR_to_int(int f, bool round);
-int FPR_mult(int f1,int f2);
-int FPR_div(int f1,int f2);
+bool thread_prior_aging;
+int load_avg;
+int int_to_FPR(int i){
+    return i*FPR_SHIFT;
+}
+int FPR_to_int(int f, bool round){
+    if(round){
+        if(f>=0)
+            f += FPR_SHIFT/2;
+        else
+            f -= FPR_SHIFT/2;
+    }
+    return f/FPR_SHIFT;
+}
+int FPR_mult(int f1,int f2){
+    return ((int64_t) f1)*f2/FPR_SHIFT;
+}
+int FPR_div(int f1,int f2){
+    return ((int64_t)f1)*FPR_SHIFT/f2;
+}
 ////
 
 /* Initializes the threading system by transforming the code
@@ -104,6 +121,10 @@ thread_init (void)
   /* Set up a thread structure for the running thread. */
   initial_thread = running_thread ();
   init_thread (initial_thread, "main", PRI_DEFAULT);
+  ////
+  initial_thread->nice = 0;
+  initial_thread->recent_cpu = 0;
+  ////
   initial_thread->status = THREAD_RUNNING;
   initial_thread->tid = allocate_tid ();
 }
@@ -145,6 +166,13 @@ thread_tick (void)
   /* Enforce preemption. */
   if (++thread_ticks >= TIME_SLICE)
     intr_yield_on_return ();
+
+  //// // proj3
+  //#ifndef USERPROG
+  if(thread_mlfqs||thread_prior_aging == true)
+      thread_aging();
+  //#endif
+  ////
 }
 
 /* Prints thread statistics. */
@@ -370,26 +398,66 @@ thread_set_nice (int nice UNUSED)
 int
 thread_get_nice (void) 
 {
-  /* Not yet implemented. */
-  return 0;
+    return thread_current()->nice;
 }
 
 /* Returns 100 times the system load average. */
 int
 thread_get_load_avg (void) 
 {
-  /* Not yet implemented. */
-  return 0;
+    return FPR_to_int(FPR_mult(int_to_FPR(100),load_avg),true);
 }
 
 /* Returns 100 times the current thread's recent_cpu value. */
 int
 thread_get_recent_cpu (void) 
 {
-  /* Not yet implemented. */
-  return 0;
+    return FPR_to_int(FPR_mult(int_to_FPR(100),thread_current()->recent_cpu),true);
 }
-
+void update_load_avg(void){
+    int ready_threads = list_size(&ready_list);
+    if(running_thread() != idle_thread)
+        ready_threads++;
+    load_avg = FPR_div(FPR_mult(int_to_FPR(59),load_avg)+int_to_FPR(ready_threads),int_to_FPR(60));
+}
+void update_recent_cpu(void){
+    struct list_elem *e;
+    struct thread* t;
+    for(e = list_begin(&all_list);e!=list_end(&all_list);e = list_next(e)){
+        t = list_entry(e,struct thread, allelem);
+        if(t != idle_thread){
+            t->recent_cpu = FPR_mult(FPR_div(FPR_mult(int_to_FPR(2),load_avg),FPR_mult(int_to_FPR(2),load_avg)+int_to_FPR(1)),t->recent_cpu)+int_to_FPR(t->nice);
+        }
+    }
+}
+void update_priority(void){
+    struct list_elem* e;
+    struct thread* t;
+    for(e = list_begin(&all_list);e!=list_end(&all_list);e = list_next(e)){
+        t = list_entry(e,struct thread, allelem);
+        t->priority = PRI_MAX - FPR_to_int(FPR_div(t->recent_cpu,int_to_FPR(4)),false)-(t->nice*2);
+        if(t->priority>PRI_MAX)
+            t->priority = PRI_MAX;
+        if(t->priority<PRI_MIN)
+            t->priority = PRI_MIN;
+    }
+    if(!list_empty(&ready_list) && list_entry(list_front(&ready_list),struct thread, elem)->priority>thread_current()->priority)
+        intr_yield_on_return();
+}
+void thread_aging(void){
+    struct thread* cur = thread_current();
+    cur->recent_cpu = cur->recent_cpu+int_to_FPR(1);
+    if(timer_ticks()%TIMER_FREQ == 0){
+        update_load_avg();
+        update_recent_cpu();
+    }
+    if(timer_ticks()%4 == 0){
+        update_priority();
+    }
+}
+
+
+
 /* Idle thread.  Executes when no other thread is ready to run.
 
    The idle thread is initially put on the ready list by
@@ -481,6 +549,10 @@ init_thread (struct thread *t, const char *name, int priority)
   old_level = intr_disable ();
   list_push_back (&all_list, &t->allelem);
   intr_set_level (old_level);
+  ////
+  t->recent_cpu = running_thread()->recent_cpu;
+  t->nice = running_thread()->nice;
+  ////
 #ifdef USERPROG
   sema_init(&(t->child_lock),0);
   sema_init(&(t->memory_lock),0);

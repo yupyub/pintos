@@ -6,6 +6,7 @@
 #include <stdint.h>
 #include "threads/synch.h"
 
+
 /* States in a thread's life cycle. */
 enum thread_status
   {
@@ -24,7 +25,8 @@ typedef int tid_t;
 #define PRI_MIN 0                       /* Lowest priority. */
 #define PRI_DEFAULT 31                  /* Default priority. */
 #define PRI_MAX 63                      /* Highest priority. */
-
+/* For Fixed Point Real Arithmetic */
+#define FPR_SHIFT (1<<14)
 /* A kernel thread or user process.
 
    Each thread structure is stored in its own 4 kB page.  The
@@ -95,6 +97,8 @@ struct thread
     struct list_elem elem;              /* List element. */
     ////
     int64_t wakeup_time; // save thread's wake up time
+    int nice;
+    int recent_cpu;
     ////
 
 #ifdef USERPROG
@@ -121,7 +125,7 @@ struct thread
    If true, use multi-level feedback queue scheduler.
    Controlled by kernel command-line option "-o mlfqs". */
 extern bool thread_mlfqs;
-
+extern bool thread_prior_aging;
 void thread_init (void);
 void thread_start (void);
 
@@ -154,10 +158,13 @@ int thread_get_recent_cpu (void);
 int thread_get_load_avg (void);
 bool compare_priority(const struct list_elem *elem1, const struct list_elem *elem2, void* aux UNUSED);
 // For Fixed Point Real Arithmetic
-#define FPR_SHIFT (1<<14)
 int int_to_FPR(int i);
 int FPR_to_int(int f, bool round);
 int FPR_mult(int f1,int f2);
 int FPR_div(int f1,int f2);
+void update_load_avg(void);
+void update_recent_cpu(void);
+void update_priority(void);
+void thread_aging(void);
 
 #endif /* threads/thread.h */
