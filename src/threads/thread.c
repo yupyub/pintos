@@ -73,6 +73,10 @@ static tid_t allocate_tid (void);
 bool compare_priority(const struct list_elem *elem1, const struct list_elem *elem2, void* aux UNUSED){
     return list_entry(elem1,struct thread, elem)->priority > list_entry(elem2,struct thread, elem)->priority;
 }
+int int_to_FPR(int i);
+int FPR_to_int(int f, bool round);
+int FPR_mult(int f1,int f2);
+int FPR_div(int f1,int f2);
 ////
 
 /* Initializes the threading system by transforming the code

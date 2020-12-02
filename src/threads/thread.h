@@ -153,5 +153,11 @@ void thread_set_nice (int);
 int thread_get_recent_cpu (void);
 int thread_get_load_avg (void);
 bool compare_priority(const struct list_elem *elem1, const struct list_elem *elem2, void* aux UNUSED);
+// For Fixed Point Real Arithmetic
+#define FPR_SHIFT (1<<14)
+int int_to_FPR(int i);
+int FPR_to_int(int f, bool round);
+int FPR_mult(int f1,int f2);
+int FPR_div(int f1,int f2);
 
 #endif /* threads/thread.h */
