@@ -169,7 +169,7 @@ thread_tick (void)
 
   //// // proj3
   //#ifndef USERPROG
-  if(thread_mlfqs||thread_prior_aging == true)
+  if(thread_mlfqs||thread_prior_aging)
       thread_aging();
   //#endif
   ////
@@ -374,6 +374,8 @@ thread_foreach (thread_action_func *func, void *aux)
 void
 thread_set_priority (int new_priority) 
 {
+  if(thread_mlfqs)
+      return;
   int tmp = thread_current()->priority;
   thread_current()->priority = new_priority;
   if(tmp>new_priority)
@@ -391,7 +393,15 @@ thread_get_priority (void)
 void
 thread_set_nice (int nice UNUSED) 
 {
-  /* Not yet implemented. */
+    struct thread* t = thread_current();
+    t->nice = nice;
+    t->priority = PRI_MAX - FPR_to_int(FPR_div(t->recent_cpu,int_to_FPR(4)),false)-(t->nice*2);
+    if(t->priority > PRI_MAX)
+        t->priority = PRI_MAX;
+    if(t->priority < PRI_MIN)
+        t->priority = PRI_MIN;
+    if(!list_empty(&ready_list)&&list_entry(list_front(&ready_list),struct thread, elem)->priority > t->priority)
+        thread_yield();
 }
 
 /* Returns the current thread's nice value. */
