@@ -1,266 +1,323 @@
 #include "userprog/syscall.h"
 #include <stdio.h>
 #include <syscall-nr.h>
+#include <threads/thread.h>
+#include <filesys/filesys.h>
+#include <devices/shutdown.h>
+#include <filesys/file.h>
+#include <userprog/process.h>
+#include <devices/input.h>
 #include "threads/interrupt.h"
 #include "threads/thread.h"
-#include "threads/vaddr.h"
-#include "userprog/process.h"
-#include "filesys/off_t.h"
-struct file{
-    struct inode* inode;
-    off_t pos;
-    bool deny_write;
-};
-void check_user_vaddr(const void* vaddr);
-static void syscall_handler (struct intr_frame *);
-void halt(void);
-void exit(int status);
-tid_t exec(const char* cmd_line);
-int wait(tid_t pid);
-bool create(const char *file, unsigned initial_size);
-bool remove(const char *file);
-int open(const char* file);
-int filesize(int fd);
-int read(int fd, void *buffer, unsigned size);
-int write(int fd, const void *buffer, unsigned size);
-void seek(int fd, unsigned position);
-unsigned tell(int fd);
-void close(int fd);
-int fibonacci(int n);
-int max_of_four_int(int a,int b,int c,int d);
+#include "vm/page.h"
 
-struct lock file_lock;
-void
+static void syscall_handler (struct intr_frame *);
+
+    void
 syscall_init (void) 
 {
     intr_register_int (0x30, 3, INTR_ON, syscall_handler, "syscall");
-    lock_init(&file_lock);
 }
-void check_user_vaddr(const void* vaddr){
-    if(!is_user_vaddr(vaddr))
-        exit(-1);
-}
-static void
-syscall_handler (struct intr_frame *f UNUSED) 
+
+    static void
+syscall_handler (struct intr_frame *f ) 
 {
-    //printf ("system call!\n");
-    //hex_dump((uintptr_t)(f->esp),f->esp,100,1);
-    //printf("call num : %d\n",*(uint32_t*)(f->esp));
-    check_user_vaddr(f->esp);
-    switch(*(int*)(f->esp)){
-        case SYS_FIBONACCI:
-            check_user_vaddr(f->esp+4);
-            f->eax=fibonacci(*(int*)(f->esp+4));
-            break;
-        case SYS_MAX_OF_FOUR_INTEGERS:
-            check_user_vaddr(f->esp+4);
-            check_user_vaddr(f->esp+8);
-            check_user_vaddr(f->esp+12);
-            check_user_vaddr(f->esp+16);
-            f->eax=max_of_four_int(*(int*)(f->esp+4),*(int*)(f->esp+8),*(int*)(f->esp+12),*(int*)(f->esp+16));
-            break;
+    int arg[5];
+    void *esp = f->esp;
+    check_address(esp, f->esp);
+    int syscall_num = *(int *)esp;
+    switch(syscall_num){
         case SYS_HALT:
             halt();
             break;
         case SYS_EXIT:
-            check_user_vaddr(f->esp+4);
-            exit(*(int*)(f->esp+4));
+            get_argument(esp,arg,1);
+            exit(arg[0]);
             break;
         case SYS_EXEC:
-            check_user_vaddr(f->esp+4);
-            f->eax = exec((const char*)*(uint32_t*)(f->esp+4));
+            get_argument(esp,arg,1);
+            check_valid_string((const void *)arg[0], f->esp);
+            f->eax = exec((const char *)arg[0]);
+            unpin_string((void *)arg[0]);
             break;
         case SYS_WAIT:
-            check_user_vaddr(f->esp+4);
-            f->eax = wait((tid_t)*(uint32_t*)(f->esp+4));
+            get_argument(esp,arg,1);
+            f->eax = wait(arg[0]);
             break;
         case SYS_CREATE:
-            check_user_vaddr(f->esp+4);
-            check_user_vaddr(f->esp+8);
-            f->eax = create((const char*)*(uint32_t*)(f->esp+4),(unsigned)*(uint32_t*)(f->esp+8));
+            get_argument(esp,arg,2);
+            check_valid_string((const void *)arg[0], f->esp);
+            f->eax = create((const char *)arg[0],(unsigned)arg[1]);
+            unpin_string((void *)arg[0]);
             break;
         case SYS_REMOVE:
-            check_user_vaddr(f->esp+4);
-            f->eax = remove((const char*)*(uint32_t*)(f->esp+4));
+            get_argument(esp,arg,1);
+            check_valid_string((const void *)arg[0], f->esp);
+            f->eax=remove((const char *)arg[0]);
             break;
         case SYS_OPEN:
-            check_user_vaddr(f->esp+4);
-            f->eax = open((const char*)*(uint32_t*)(f->esp+4));
+            get_argument(esp,arg,1);
+            check_valid_string((const void *)arg[0], f->esp);
+            f->eax = open((const char *)arg[0]);
+            unpin_string((void *)arg[0]);
             break;
         case SYS_FILESIZE:
-            check_user_vaddr(f->esp+4);
-            f->eax = filesize((int)*(uint32_t*)(f->esp+4));
+            get_argument(esp,arg,1);
+            f->eax = filesize(arg[0]);
             break;
         case SYS_READ:
-            check_user_vaddr(f->esp+4);
-            check_user_vaddr(f->esp+8);
-            check_user_vaddr(f->esp+12);
-            f->eax = read((int)*(uint32_t*)(f->esp+4),(void*)*(uint32_t*)(f->esp+8),(unsigned)*(uint32_t*)(f->esp+12));
+            get_argument(esp,arg,3);
+            check_valid_buffer((void *)arg[1], (unsigned)arg[2], f->esp, true);
+            f->eax = read(arg[0],(void *)arg[1],(unsigned)arg[2]);
+            unpin_buffer((void *)arg[1], (unsigned) arg[2]);
             break;
         case SYS_WRITE:
-            check_user_vaddr(f->esp+4);
-            check_user_vaddr(f->esp+8);
-            check_user_vaddr(f->esp+12);
-            f->eax = write((int)*(uint32_t*)(f->esp+4),(void*)*(uint32_t*)(f->esp+8),(unsigned)*(uint32_t*)(f->esp+12));
+            get_argument(esp,arg,3);
+            check_valid_buffer((void *)arg[1], (unsigned)arg[2], f->esp, false);
+            f->eax = write(arg[0],(void *)arg[1],(unsigned)arg[2]);
+            unpin_buffer((void *)arg[1], (unsigned)arg[2]);
             break;
         case SYS_SEEK:
-            check_user_vaddr(f->esp+4);
-            check_user_vaddr(f->esp+8);
-            seek((int)*(uint32_t*)(f->esp+4),(unsigned)*(uint32_t*)(f->esp+8));
+            get_argument(esp,arg,2);
+            seek(arg[0],(unsigned)arg[1]);
             break;
         case SYS_TELL:
-            check_user_vaddr(f->esp+4);
-            f->eax = tell((int)*(uint32_t*)(f->esp+4));
+            get_argument(esp,arg,1);
+            f->eax = tell(arg[0]);
             break;
         case SYS_CLOSE:
-            check_user_vaddr(f->esp+4);
-            close((int)*(uint32_t*)(f->esp+4));
+            get_argument(esp,arg,1);
+            close(arg[0]);
             break;
-        default:
-            exit(-1); // syscall number is invalid
     }
-    //thread_exit ();
+    unpin_ptr(f->esp);
 }
-int fibonacci(int n){
-    int f0 = 0, f1 = 1, f2;
-    for(int i=0;i<n;i++){
-        f2=f0+f1;
-        f0=f1;
-        f1=f2;
-   }
-   return f0;
+/* chack_address function */
+    void
+check_address(void *addr, void *esp)
+{
+    struct vm_entry *vme;
+    uint32_t address=(unsigned int)addr;
+    uint32_t highest_address=0xc0000000;
+    uint32_t lowest_address=0x8048000;
+    if(address < highest_address && address >= lowest_address){
+        vme = find_vme(addr);
+        if(vme == NULL){
+            if(addr >= esp-STACK_HEURISTIC){
+                if(expand_stack(addr) == false)
+                    exit(-1);
+            }
+            else
+                exit(-1);
+        }
+    }
+    else
+        exit(-1);
 }
-int max_of_four_int(int a,int b,int c,int d){
-    int maxi = a;
-    if(maxi < b)
-        maxi = b;
-    if(maxi < c)
-        maxi = c;
-    if(maxi < d)
-        maxi = d;
-    return maxi;
+void check_valid_buffer(void *buffer, unsigned size, void *esp, bool to_write)
+{
+    struct vm_entry *vme;
+    char *check_buffer = (char *)buffer;
+    for(unsigned i=0; i<size; i++){
+        check_address((void *)check_buffer, esp);
+        vme = find_vme((void *)check_buffer);
+        if(vme != NULL && to_write == true && vme->writable == false)
+            exit(-1);
+        check_buffer++;
+    }
 }
-void halt(void){
+void check_valid_string(const void *str, void *esp)
+{
+    char *check_str = (char *)str;
+    check_address((void *)check_str,esp);
+    while(*check_str != 0){
+        check_str += 1;
+        check_address(check_str, esp);
+    }
+}
+/* get_argument function */
+    void
+get_argument(void *esp, int *arg, int count)
+{
+    void *stack_pointer=esp+4;
+    if(count <= 0)
+        return;
+    for(int i=0; i<count; i++){
+        check_address(stack_pointer, esp);
+        arg[i] = *(int *)stack_pointer;
+        stack_pointer = stack_pointer + 4;
+    }
+}
+
+    void 
+halt(void)
+{
     shutdown_power_off();
 }
-void exit(int status){
-    thread_current()->exit_status = status;
-    printf("%s: exit(%d)\n",thread_name(),status);
-    ////
-    for(int i = 3;i<128;i++){
-        if(thread_current()->fd[i] != NULL)
-            close(i);
-    }
-    ////
+    void 
+exit(int status)
+{
+    struct thread *current_process=thread_current();
+
+    current_process->process_exit_status = status;     
+    printf("%s: exit(%d)\n",current_process->name,status);
     thread_exit();
 }
-tid_t exec(const char* cmd_line){
-    return process_execute(cmd_line);
+    int
+wait(tid_t tid)
+{
+    int status;
+    status = process_wait(tid);
+    return status;
 }
-int wait(tid_t tid){
-    return process_wait(tid);
+    bool
+create(const char *file, unsigned initial_size)
+{
+    bool result=false;
+    if(filesys_create(file,initial_size)==true)
+        result=true;
+    return result;
 }
-int read(int fd, void *buffer, unsigned size){
-    int i = 0;
-    check_user_vaddr(buffer); //// ????
-    lock_acquire(&file_lock);
-    if(fd == STDIN_FILENO){
-        for(i = 0;i<(int)size;i++){
-            ((char*) buffer)[i] = input_getc();
-            if(((char*)buffer)[i] == '\0')
-                break;
-        }
+    bool
+remove(const char *file)
+{
+    bool result = false;
+    if(filesys_remove(file)==true)
+        result = true;
+    return result;
+}
+    tid_t
+exec(const char *cmd_name)
+{
+    tid_t pid;
+    struct thread *child_process;
+
+    pid = process_execute(cmd_name);
+    child_process = get_child_process(pid);
+    sema_down(&(child_process->load_semaphore));      
+    if(child_process->load_success==true)
+        return pid;
+    else
+        return -1;
+}
+    int
+open(const char *file)
+{
+    struct file *new_file;
+    int fd;
+    new_file=filesys_open(file);
+
+    if(new_file != NULL){
+        fd = process_add_file(new_file);
+        return fd;
     }
-    else if(fd>2){
-        if(thread_current()->fd[fd] == NULL){
-            lock_release(&file_lock);
-            exit(-1);
-            //return -1;
-        }
-        i = file_read(thread_current()->fd[fd],buffer,size);
-    }
-    lock_release(&file_lock);
-    return i;
+    else
+        return -1;
 }
-int write(int fd, const void *buffer, unsigned size){
-    int ret = -1;
-    check_user_vaddr(buffer);
+    int
+filesize(int fd)
+{
+    int file_size;
+    struct file *current_file = process_get_file(fd);
+    if(current_file != NULL){
+        file_size = file_length(current_file);
+        return file_size;
+    }
+    else
+        return -1;
+}
+    int 
+read(int fd, void *buffer, unsigned size)
+{
+    struct file *current_file;
+    int read_size = 0;
+    char *read_buffer = (char *)buffer;
+
     lock_acquire(&file_lock);
 
-    if(fd == STDOUT_FILENO){
-        putbuf(buffer,size);
-        ret = size;
-    }
-    else if(fd>2){
-        if(thread_current()->fd[fd] == NULL){
-            lock_release(&file_lock);
-            exit(-1);
-            //return 0;
+    if(fd == 0){
+        read_buffer[read_size]=input_getc();
+        while(read_size < size && read_buffer[read_size] != '\n'){
+            read_size++;
+            read_buffer[read_size]=input_getc();
         }
-        if((thread_current()->fd[fd])->deny_write)
-            file_deny_write(thread_current()->fd[fd]);
-        ret = file_write(thread_current()->fd[fd],buffer,size);
+        read_buffer[read_size]='\0';
+    }
+    else{
+        current_file = process_get_file(fd);
+        if(current_file != NULL)
+            read_size = file_read(current_file,buffer,size);
     }
     lock_release(&file_lock);
-    return ret;
+    return read_size;
 }
+    int
+write(int fd, void *buffer, unsigned size)
+{
+    struct file *current_file;
+    int write_size = 0;
 
-bool create(const char *file, unsigned initial_size){
-    if(file == NULL)
-        exit(-1);
-    check_user_vaddr(file);
-    return filesys_create(file,initial_size);
-}
-bool remove(const char *file){
-    if(file == NULL)
-        exit(-1);
-    check_user_vaddr(file);
-    return filesys_remove(file);
-}
-int open(const char* file){
-    if(file == NULL)
-        exit(-1);
-    int ret = -1;
-    check_user_vaddr(file);
-    lock_acquire(&file_lock);
-    struct file* fp = filesys_open(file);
-    if(fp == NULL){
+    if(fd == 1){ 
+        putbuf((const char *)buffer,size);
+        write_size = size;
+    }
+    else{
+        lock_acquire(&file_lock);
+        current_file = process_get_file(fd);
+        if(current_file != NULL)
+            write_size = file_write(current_file,(const void *)buffer,size);
         lock_release(&file_lock);
-        return ret;
     }
-    for(int i = 3;i<128;i++){
-        if(thread_current()->fd[i] == NULL){
-            if(strcmp(thread_current()->name,file) == 0)
-                file_deny_write(fp);
-            thread_current()->fd[i] = fp;
-            //return i;
-            ret = i;
-            break;
-        }
+    return write_size;
+}
+    void 
+seek(int fd, unsigned position)
+{
+    struct file *current_file = process_get_file(fd);
+    if(current_file != NULL)
+        file_seek(current_file,position);
+}
+    unsigned
+tell(int fd)
+{
+    unsigned offset = 0;
+    struct file *current_file = process_get_file(fd);
+
+    if(current_file != NULL)
+        offset = file_tell(current_file);
+    return offset;
+}
+    void 
+close(int fd)
+{
+    struct file *current_file = process_get_file(fd);
+    if(current_file != NULL){
+        file_close(current_file);
+        thread_current()->file_descriptor[fd]=NULL;
     }
-    lock_release(&file_lock);
-    return ret;
-}
-int filesize(int fd){
-    if(thread_current()->fd[fd] == NULL)
-        exit(-1);
-    return file_length(thread_current()->fd[fd]);
-}
-void seek(int fd, unsigned position){
-    if(thread_current()->fd[fd] == NULL)
-        exit(-1);
-    file_seek(thread_current()->fd[fd],position);
-}
-unsigned tell(int fd){
-    if(thread_current()->fd[fd] == NULL)
-        exit(-1);
-    return file_tell(thread_current()->fd[fd]);
-}
-void close(int fd){
-    if(thread_current()->fd[fd] == NULL)
-        exit(-1);
-    struct file* fp = thread_current()->fd[fd];
-    thread_current()->fd[fd] = NULL;
-    file_close(fp);
 }
 
+void unpin_ptr(void *vaddr)
+{
+    struct vm_entry *vme  = find_vme(vaddr);
+    if(vme != NULL)
+        vme->pinned = false;
+}
+
+void unpin_string(void *str)
+{
+    unpin_ptr(str);
+    while(*(char *)str != 0){
+        str = (char *)str + 1;
+        unpin_ptr(str);
+    }
+}
+
+void unpin_buffer(void *buffer, unsigned size)
+{
+    char *local_buffer = (char *)buffer;
+    for(int i=0; i<size; i++){
+        unpin_ptr(local_buffer);
+        local_buffer++;
+    }
+}

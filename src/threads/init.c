@@ -37,6 +37,8 @@
 #include "filesys/filesys.h"
 #include "filesys/fsutil.h"
 #endif
+#include "vm/file.h"
+#include "vm/swap.h"
 
 /* Page directory with kernel mappings only. */
 uint32_t *init_page_dir;
@@ -128,7 +130,10 @@ main (void)
 #endif
 
   printf ("Boot complete.\n");
-  
+  /* file lock init*/
+  lock_init(&file_lock);
+  swap_init();
+  lru_list_init();
   /* Run actions specified on kernel command line. */
   run_actions (argv);
 
@@ -256,10 +261,6 @@ parse_options (char **argv)
         random_init (atoi (value));
       else if (!strcmp (name, "-mlfqs"))
         thread_mlfqs = true;
-      ////
-      else if(!strcmp(name,"-aging"))
-          thread_prior_aging = true;
-      ////
 #ifdef USERPROG
       else if (!strcmp (name, "-ul"))
         user_page_limit = atoi (value);

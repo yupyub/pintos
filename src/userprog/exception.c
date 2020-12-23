@@ -5,6 +5,8 @@
 #include "threads/interrupt.h"
 #include "threads/thread.h"
 #include "threads/vaddr.h"
+#include "userprog/process.h"
+#include "userprog/syscall.h"
 
 /* Number of page faults processed. */
 static long long page_fault_cnt;
@@ -127,7 +129,8 @@ page_fault (struct intr_frame *f)
   bool write;        /* True: access was write, false: access was read. */
   bool user;         /* True: access by user, false: access by kernel. */
   void *fault_addr;  /* Fault address. */
-
+  struct vm_entry *vme;
+  bool load = false;
   /* Obtain faulting address, the virtual address that was
      accessed to cause the fault.  It may point to code or to
      data.  It is not necessarily the address of the instruction
@@ -141,26 +144,35 @@ page_fault (struct intr_frame *f)
      be assured of reading CR2 before it changed). */
   intr_enable ();
 
-  /* Count page faults. */
   page_fault_cnt++;
 
-  /* Determine cause. */
   not_present = (f->error_code & PF_P) == 0;
   write = (f->error_code & PF_W) != 0;
   user = (f->error_code & PF_U) != 0;
-  ////
-  if(!user || is_kernel_vaddr(fault_addr) || not_present)
-      exit(-1);
-  ////
 
+  check_address(fault_addr, f->esp);
+	if(not_present==false)
+		exit(-1);
+
+  	vme = find_vme(fault_addr);
+  	if(vme != NULL){
+	  	load = handle_mm_fault(vme);
+	  	if(vme->is_loaded == true){
+			vme->pinned = false;
+			load = true;
+	  	}
+	}
+ 
   /* To implement virtual memory, delete the rest of the function
      body, and replace it with code that brings in the page to
      which fault_addr refers. */
-  printf ("Page fault at %p: %s error %s page in %s context.\n",
-          fault_addr,
-          not_present ? "not present" : "rights violation",
-          write ? "writing" : "reading",
-          user ? "user" : "kernel");
-  kill (f);
+  if(load == false){
+	  printf ("Page fault at %p: %s error %s page in %s context.\n",
+      	    fault_addr,
+       	    not_present ? "not present" : "rights violation",
+            write ? "writing" : "reading",
+            user ? "user" : "kernel");
+	  kill (f);
+  }
 }
 

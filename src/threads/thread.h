@@ -5,8 +5,9 @@
 #include <list.h>
 #include <stdint.h>
 #include "threads/synch.h"
-
-
+#include "lib/kernel/list.h"
+#include <hash.h>
+#include "vm/page.h"
 /* States in a thread's life cycle. */
 enum thread_status
   {
@@ -25,8 +26,11 @@ typedef int tid_t;
 #define PRI_MIN 0                       /* Lowest priority. */
 #define PRI_DEFAULT 31                  /* Default priority. */
 #define PRI_MAX 63                      /* Highest priority. */
-/* For Fixed Point Real Arithmetic */
-#define FPR_SHIFT (1<<14)
+
+/* mlfp constants */
+#define NICE_DEFAULT 0
+#define RECENT_CPU_DEFAULT 0
+#define LOAD_AVG_DEFAULT 0
 /* A kernel thread or user process.
 
    Each thread structure is stored in its own 4 kB page.  The
@@ -86,46 +90,78 @@ typedef int tid_t;
 struct thread
   {
     /* Owned by thread.c. */
+	struct list_elem childelem;         /* List element for child_list */  
     tid_t tid;                          /* Thread identifier. */
     enum thread_status status;          /* Thread state. */
     char name[16];                      /* Name (for debugging purposes). */
     uint8_t *stack;                     /* Saved stack pointer. */
     int priority;                       /* Priority. */
     struct list_elem allelem;           /* List element for all threads list. */
-
     /* Shared between thread.c and synch.c. */
     struct list_elem elem;              /* List element. */
-    ////
-    int64_t wakeup_time; // save thread's wake up time
-    int nice;
-    int recent_cpu;
-    ////
-
+	
 #ifdef USERPROG
     /* Owned by userprog/process.c. */
     uint32_t *pagedir;                  /* Page directory. */
-    struct semaphore child_lock;
-    struct semaphore memory_lock;
-    struct list child;
-    struct list_elem child_elem;
-    int exit_status;
-    struct file* fd[128];
-    ////
-    int bad_end;
-    struct semaphore load_lock;
-    struct thread* parent;
-    ////
 #endif
 
     /* Owned by thread.c. */
     unsigned magic;                     /* Detects stack overflow. */
+    /* VALUE */
+	struct file **file_descriptor;
+	int next_fd;
+	bool load_success;
+	bool process_exit;
+	int process_exit_status;
+	struct semaphore exit_semaphore;
+	struct semaphore load_semaphore;
+	struct thread *parent_thread;
+	struct list child_list;
+	int64_t wakeup_tick;
+    /* Value for donation */
+	int init_priority;
+	struct lock *wait_on_lock;
+	struct list donations;
+	struct list_elem donation_elem;
+	/* Value for mlfq */
+	int nice;
+	int recent_cpu;
+	/* hash for vm_entry */
+	struct hash vm;
   };
+int64_t next_tick_to_awake;
 
 /* If false (default), use round-robin scheduler.
    If true, use multi-level feedback queue scheduler.
    Controlled by kernel command-line option "-o mlfqs". */
 extern bool thread_mlfqs;
-extern bool thread_prior_aging;
+/* thread alarm systemcall */
+void thread_sleep(int64_t ticks);               /* make thread sleep */
+void thread_awake(int64_t ticks);               /* awake thread */
+void update_next_tick_to_awake(int64_t ticks);  
+int64_t get_next_tick_to_awake(void);           
+
+/* thread priority */
+bool cmp_tick(const struct list_elem *a,const struct list_elem *b,void *aux UNUSED);
+bool cmp_priority(const struct list_elem *a,const struct list_elem *b,void *aux UNUSED);
+void test_max_priority(void);
+/* donate priority */
+void donate_priority(void);
+void remove_with_lock(struct lock *lock);
+void refresh_priority(void);
+/* mlfp priority */
+void mlfqs_priority(struct thread *t);
+void mlfqs_recent_cpu(struct thread *t);
+void mlfqs_load_avg(void);
+void mlfqs_increment(void);
+void mlfqs_recalc(void);
+/* lock global value */
+extern struct lock file_lock;
+/* list for page */
+extern struct list lru_list;
+/* lock for lru_list */
+extern struct lock lru_list_lock;
+extern struct page *lru_clock;
 void thread_init (void);
 void thread_start (void);
 
@@ -156,15 +192,5 @@ int thread_get_nice (void);
 void thread_set_nice (int);
 int thread_get_recent_cpu (void);
 int thread_get_load_avg (void);
-bool compare_priority(const struct list_elem *elem1, const struct list_elem *elem2, void* aux UNUSED);
-// For Fixed Point Real Arithmetic
-int int_to_FPR(int i);
-int FPR_to_int(int f, bool round);
-int FPR_mult(int f1,int f2);
-int FPR_div(int f1,int f2);
-void update_load_avg(void);
-void update_recent_cpu(void);
-void update_priority(void);
-void thread_aging(void);
 
 #endif /* threads/thread.h */
